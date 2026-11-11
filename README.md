@@ -49,7 +49,7 @@ Prices come straight from Chainlink price feeds on Robinhood Chain mainnet (chai
 | `onshare watch [SYM...]` | Live ticker, refreshes every 10s |
 | `onshare chart <SYM> [--tf 1h\|4h\|1d]` | Candlestick chart built from Chainlink oracle rounds |
 
-Supported today: **NVDA, TSLA, AAPL**. More assets will be added once their feed addresses are verified.
+Supported today (14, all vs USDG): **NVDA, TSLA, AAPL, MSFT, GOOGL, AMZN, META, AMD, TSM, PLTR, COIN, MSTR, SPY, QQQ**. Each one has its own Chainlink feed on Robinhood Chain.
 
 ### Policy
 
@@ -66,7 +66,7 @@ max_alloc: 25        # % of portfolio per stock
 drawdown: 10         # % from peak, then sell or hold only
 health_factor: 1.5   # minimum loan health factor
 daily_limit: 10      # % of portfolio traded per day
-allowlist: [NVDA, TSLA, AAPL]
+allowlist: [NVDA, TSLA, AAPL, MSFT, GOOGL, AMZN, META, AMD, TSM, PLTR, COIN, MSTR, SPY, QQQ]
 max_feed_age_hours: 72
 ```
 
