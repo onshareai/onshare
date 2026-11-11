@@ -26,6 +26,7 @@ Each swap is measured by real balance changes, not by what the swap venue report
 |---|---|
 | `src/OnshareAccount.sol` | The policy-bound smart account |
 | `src/OnshareAccountFactory.sol` | Deploys one account per owner at a predictable CREATE2 address |
+| `src/adapters/UniswapV3Adapter.sol` | Swaps through Uniswap v3 (SwapRouter02) along owner-set routes |
 | `src/interfaces/IExternal.sol` | ERC-20, Chainlink feed and swap adapter interfaces |
 
 ## Build and test
@@ -39,13 +40,47 @@ forge build
 forge test
 ```
 
-The suite has 42 tests: unit tests for every rule, fuzz tests (1,000 runs each) and invariant tests (128 runs × 64 calls) that drive the account with random trades, price moves and time jumps. Line coverage of `OnshareAccount.sol` is about 97%.
+The suite has 55 tests plus 5 mainnet fork tests: unit tests for every rule, fuzz tests (1,000 runs each) and invariant tests (128 runs × 64 calls) that drive the account with random trades, price moves and time jumps. Line coverage of `OnshareAccount.sol` is about 97%.
 
 Invariants checked:
 
 - the agent's daily volume never exceeds the daily limit
 - no token approval is ever left open to a swap venue
 - the agent can never change the owner, its own key, the policy or the adapter list
+
+## Uniswap v3 adapter
+
+Uniswap holds almost all Stock Token liquidity on Robinhood Chain, so the first production venue is Uniswap v3. The adapter pulls exactly the approved amount, swaps along a route the adapter owner configured (direct pool or multi-hop), sends the output straight to the account and clears its router approval. It never holds funds between calls.
+
+A wrong route cannot cost the account more than its oracle slippage bound: the account measures what it actually received and reverts if it is more than 1% below the Chainlink price.
+
+Robinhood Chain mainnet (chain 4663) addresses used by the adapter and the fork tests:
+
+| Contract | Address | Source |
+|---|---|---|
+| Uniswap SwapRouter02 | `0xCaf681a66D020601342297493863E78C959E5cb2` | Uniswap `sdk-core` |
+| Uniswap v3 Factory | `0x1f7d7550B1b028f7571E69A784071F0205FD2EfA` | Uniswap `sdk-core` |
+| Uniswap QuoterV2 | `0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7` | Uniswap `sdk-core` |
+| USDG (6 decimals) | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` | Paxos docs |
+
+Always confirm addresses on the [explorer](https://robinhoodchain.blockscout.com) before deploying.
+
+## Mainnet fork tests
+
+`test/fork/RobinhoodFork.t.sol` runs the account and the adapter against a local fork of Robinhood Chain mainnet: real USDG, real NVDA/TSLA/AAPL Stock Tokens, real Chainlink feeds and real Uniswap v3 pools. Balances exist only inside the fork, so no real funds are used.
+
+```bash
+ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com \
+  forge test --match-path "test/fork/*" -vv
+```
+
+For each stock it finds the deepest USDG v3 pool, quotes a $100 buy and then:
+
+- if the pool is within 1% of Chainlink, the agent buys and sells half back, and the test checks balances and approvals
+- if the pool is further than 1% away, the test checks that the policy refuses the trade
+- if the pair has no v3 pool (it may trade only on Uniswap v4), the test is skipped with a note
+
+Without `ROBINHOOD_RPC_URL` the fork tests are skipped. GitHub Actions runs them on every push and on weekday mornings.
 
 ## Try it locally
 
@@ -76,7 +111,8 @@ export QUOTE_TOKEN=<quote token address>
 export ASSET_TOKENS=<NVDA>,<TSLA>,<AAPL>
 export ASSET_FEEDS=<NVDA feed>,<TSLA feed>,<AAPL feed>
 export AGENT=<agent session key address>    # optional
-export ADAPTER=<swap adapter address>       # optional
+export UNISWAP_ROUTER=0xCaf681a66D020601342297493863E78C959E5cb2   # deploys a UniswapV3Adapter
+export ROUTE_FEES=500,500,500               # v3 fee tier per asset, check the pools first
 
 cast wallet import deployer --interactive   # stores your key encrypted, never in a file
 forge script script/Deploy.s.sol --rpc-url robinhood --broadcast --account deployer
@@ -86,7 +122,7 @@ forge script script/Deploy.s.sol --rpc-url robinhood --broadcast --account deplo
 
 - ERC-4337 `validateUserOp` (the agent currently sends normal transactions with its session key)
 - Lending module and the `health_factor` rule
-- A production swap adapter for a Robinhood Chain venue
+- A Uniswap v4 adapter (much of the Stock Token liquidity is on v4)
 - Independent security audit
 
 ## License
