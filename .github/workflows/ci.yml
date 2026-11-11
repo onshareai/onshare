@@ -17,7 +17,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - run: npm ci
       - run: npm test
+
+  cli-live:
+    name: CLI on-chain commands (anvil)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: npm ci
+      - run: npm run test:live
 
   contracts:
     name: Contracts (unit, fuzz, invariant)

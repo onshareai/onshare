@@ -5,7 +5,7 @@ import { ASSETS, EXPLORER, CHAIN_ID, snapshot, rounds, candles, resolve } from '
 import { DEFAULT_POLICY, POLICY_FILE, toYaml, loadPolicy, check } from '../src/policy.js';
 import { c, sym, logo, usd, ago, padEnd, padStart, line } from '../src/ui.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const PORTFOLIO_FILE = 'onshare.portfolio.json';
 
 // ---------- arg parsing ----------
@@ -40,20 +40,36 @@ ${c.bold('Policy')}
   check <buy|sell> <SYM> <USD>    Would the policy approve this trade?
         [--portfolio 10000] [--hold 12]   (portfolio value, current holding %)
 
-${c.bold('Agent')}
+${c.bold('Agent (simulation)')}
   portfolio init                  Write an example ${PORTFOLIO_FILE}
   run --dry-run [--every 900] [--once]
                                   Run the decision loop on your portfolio file.
                                   Proposes and checks trades. Sends nothing.
 
+${c.bold('Agent (on-chain)')} ${c.gray('· needs an OnshareAccount; contracts are not audited yet')}
+  agent new                       Create a session key in ${'onshare.agent.key'} (owner then runs setAgent)
+  agent show                      Print the session key's address
+  account <address>               Read an account: owner, agent, value, policy, allocations
+  swap <buy|sell> <SYM> <USD>     One agent trade through the account
+        --account <addr> --adapter <addr> [--yes]
+  run --live --account <addr> --adapter <addr> [--every 900] [--once] [--yes]
+                                  Agent loop on-chain: trims stocks above max_alloc,
+                                  within daily_limit. Every trade is simulated first
+                                  and checked by the contract.
+
 ${c.bold('Other')}
   version · help
 
 ${c.bold('Environment')}
-  ONSHARE_RPC   Your own Robinhood Chain RPC URL (recommended for heavy use)
-  NO_COLOR      Disable colors
+  ONSHARE_RPC         RPC URL (default: Robinhood Chain mainnet). Use a testnet or fork while unaudited.
+  ONSHARE_ACCOUNT     Default --account
+  ONSHARE_ADAPTER     Default --adapter
+  ONSHARE_AGENT_KEY   Session key (otherwise read from onshare.agent.key)
+  NO_COLOR            Disable colors
 
-${c.gray('Read-only. Onshare never asks for a private key. Live execution opens at limited release.')}
+${c.gray('The agent key is a limited session key: it can only call agentSwap. It cannot withdraw,')}
+${c.gray('change the policy or call other contracts. Never use your owner wallet key here.')}
+${c.gray('On mainnet, on-chain commands also need --accept-unaudited until the audit is done.')}
 `;
 
 function die(msg) {
@@ -187,9 +203,8 @@ function cmdPortfolio() {
 }
 
 async function cmdRun() {
-  if (!flags['dry-run']) {
-    console.log(`${sym.bad} Live execution opens at limited release. Running in ${c.bold('--dry-run')} mode instead.\n`);
-  }
+  if (flags.live) return cmdRunLive();
+  if (!flags['dry-run']) die('choose a mode: --dry-run (simulation, sends nothing) or --live (on-chain, needs --account and --adapter)');
   if (!fs.existsSync(PORTFOLIO_FILE)) die(`no ${PORTFOLIO_FILE} found. Run: onshare portfolio init`);
   const pf = JSON.parse(fs.readFileSync(PORTFOLIO_FILE, 'utf8'));
   const p = loadPolicy();
@@ -238,14 +253,115 @@ async function cmdRun() {
   }
 }
 
+
+// ---------- on-chain ----------
+const live = () => import('../src/live.js');
+
+async function cmdAgent() {
+  const L = await live();
+  const sub = pos[1] || 'show';
+  if (sub === 'new') {
+    const a = L.newAgentKey(flags.force);
+    console.log(`${sym.ok} wrote ${L.KEY_FILE} ${c.gray('(file mode 600, keep it private and out of git)')}`);
+    console.log(line(sym.dot, 'agent address', a));
+    console.log(c.gray(`\nNext: the account owner allowlists this key, e.g. from onshare.fun/dashboard.html (Set agent),`));
+    console.log(c.gray(`or with cast: cast send <account> "setAgent(address,uint64)" ${a} <expiry unix time>`));
+    console.log(c.gray(`Fund it with a little ETH for gas. It never holds or moves your stocks itself.`));
+    return;
+  }
+  if (sub === 'show') {
+    console.log(line(sym.dot, 'agent address', L.agentAddress(flags['key-file'])));
+    return;
+  }
+  die('usage: onshare agent <new|show>');
+}
+
+function accountArg(L, idx) {
+  return L.addr(pos[idx] && pos[idx].startsWith('0x') ? pos[idx] : flags.account || process.env.ONSHARE_ACCOUNT, '--account');
+}
+
+async function cmdAccount() {
+  const L = await live();
+  const account = accountArg(L, 1);
+  const { pub, chainId } = await L.clients();
+  const s = await L.readAccount(pub, account);
+  L.printAccount(s, chainId);
+}
+
+async function cmdSwap() {
+  const L = await live();
+  const side = String(pos[1] || '').toLowerCase();
+  const amount = Number(pos[3]);
+  if (!['buy', 'sell'].includes(side) || !pos[2] || !(amount > 0)) die('usage: onshare swap <buy|sell> <SYM> <USD> --account <addr> --adapter <addr> [--yes]');
+  const account = accountArg(L, 99);
+  const adapter = L.addr(flags.adapter || process.env.ONSHARE_ADAPTER, '--adapter');
+  const ctx = await L.clients({ needKey: true, keyFile: flags['key-file'] });
+  L.mainnetGuard(ctx.chainId, flags);
+  const s = await L.readAccount(ctx.pub, account);
+  const a = L.findAsset(s, pos[2]);
+  const t = L.planTrade(s, side, a, amount);
+  console.log(`${c.amber('$')} onshare swap ${side} ${a.symbol} ${usd(amount)} ${c.gray(`· account ${account.slice(0, 10)}… · chain ${ctx.chainId}`)}`);
+  console.log(line(sym.ok, 'price', `${usd(Number(a.price) / 10 ** a.feedDecimals)} · chainlink`));
+  console.log(line(sym.arrow, 'trade', `${side === 'buy' ? 'pay' : 'sell'} ${t.amountIn === 0n ? 0 : Number(t.amountIn) / 10 ** t.inDec} ${t.inSym} → ${t.outSym}`));
+  const r = await L.executeTrade(ctx, s, adapter, t, { yes: !!flags.yes });
+  if (!r.sent || r.failed) process.exitCode = 2;
+}
+
+async function cmdRunLive() {
+  const L = await live();
+  const account = accountArg(L, 99);
+  const adapter = L.addr(flags.adapter || process.env.ONSHARE_ADAPTER, '--adapter');
+  const ctx = await L.clients({ needKey: true, keyFile: flags['key-file'] });
+  L.mainnetGuard(ctx.chainId, flags);
+  const every = Math.max(10, Number(flags.every || 900));
+  console.log(`${c.amber('$')} onshare run --live ${c.gray(`· account ${account} · agent ${ctx.agent.address} · chain ${ctx.chainId} · every ${every}s`)}`);
+  let n = 0;
+  for (;;) {
+    n++;
+    try {
+      const s = await L.readAccount(ctx.pub, account);
+      const total = Number(s.value ?? 0n) / 1e18;
+      const room = Number(s.remaining ?? 0n) / 1e18;
+      console.log(`\n${c.gray(`cycle ${n} · ${new Date().toLocaleTimeString('en-US', { hour12: false })}`)}`);
+      console.log(line(sym.ok, 'read', `portfolio ${usd(total)} · daily budget ${usd(room)} · max_alloc ${(s.policy.maxAllocBps / 100).toFixed(1)}%`));
+      if (!s.active) {
+        console.log(line(sym.bad, 'agent', s.paused ? 'paused by the owner (kill switch on), holding' : 'no active session key for this agent, holding'));
+      } else if (s.agent.toLowerCase() !== ctx.agent.address.toLowerCase()) {
+        console.log(line(sym.bad, 'agent', `this key is not the account's agent (${s.agent}), holding`));
+      } else {
+        let acted = false, left = room;
+        for (const a of s.assets) {
+          const px = Number(a.price) / 10 ** a.feedDecimals;
+          const valueUsd = Number(a.balance) / 10 ** a.decimals * px;
+          const alloc = total > 0 ? (valueUsd / total) * 100 : 0;
+          const cap = s.policy.maxAllocBps / 100;
+          if (alloc <= cap) { console.log(line(sym.ok, a.symbol, `${alloc.toFixed(1)}% ≤ ${cap}%`)); continue; }
+          const sell = Math.min(valueUsd - (total * cap) / 100, left);
+          if (sell < 1) { console.log(line(sym.bad, a.symbol, `${alloc.toFixed(1)}% > ${cap}% but daily budget is used up, holding`)); continue; }
+          console.log(line(sym.arrow, 'propose', `trim ${a.symbol} ${alloc.toFixed(1)}% → ${cap}% (sell ${usd(sell)})`));
+          const r = await L.executeTrade(ctx, s, adapter, L.planTrade(s, 'sell', a, Math.floor(sell * 100) / 100), { yes: !!flags.yes });
+          if (r.sent && !r.failed) { acted = true; left -= sell; }
+        }
+        if (!acted) console.log(line(sym.dot, 'hold', 'portfolio within policy'));
+      }
+    } catch (e) {
+      console.log(line(sym.bad, 'error', e.shortMessage || e.message));
+    }
+    if (flags.once) break;
+    console.log(c.gray(`next cycle in ${every}s · Ctrl+C to stop`));
+    await new Promise((r) => setTimeout(r, every * 1000));
+  }
+}
+
 // ---------- dispatch ----------
 const routes = {
   markets: cmdMarkets, price: cmdPrice, watch: cmdWatch, chart: cmdChart,
   policy: cmdPolicy, check: cmdCheck, portfolio: cmdPortfolio, run: cmdRun,
+  agent: cmdAgent, account: cmdAccount, swap: cmdSwap,
   version: () => console.log(VERSION), '--version': () => console.log(VERSION), '-v': () => console.log(VERSION),
   help: () => console.log(HELP), '--help': () => console.log(HELP), '-h': () => console.log(HELP),
 };
 
 const fn = routes[cmd] || (cmd ? null : routes.help);
 if (!fn) die(`unknown command "${cmd}". Run: onshare help`);
-Promise.resolve(fn()).catch((e) => die(e.message));
+Promise.resolve(fn()).catch((e) => die(e.shortMessage || e.message));

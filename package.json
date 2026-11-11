@@ -1,6 +1,6 @@
 {
   "name": "onshare",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Policy-bound AI agent for tokenized stocks on Robinhood Chain — terminal CLI",
   "type": "module",
   "bin": {
@@ -16,7 +16,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "test:live": "node test/live.js"
   },
   "keywords": [
     "robinhood-chain",
@@ -29,5 +30,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/onshareai/onshare.git"
+  },
+  "dependencies": {
+    "viem": "^2.57.18"
   }
 }
