@@ -103,6 +103,10 @@ cycle 1 · block #31234695
 - Candles are built from oracle updates (a new round on a price move or heartbeat), not from exchange trades.
 - `onshare.portfolio.json` is git-ignored so your holdings stay local.
 
+## Smart contracts
+
+The on-chain policy lives in [`contracts/`](contracts): a smart account that lets the agent trade through an expiring session key, and reverts any trade that breaks `max_alloc`, `daily_limit`, `drawdown`, slippage or feed-age rules. The owner can pause the agent at any time. v0 is tested (42 tests, fuzz and invariant) but **not audited**, so use it on testnets only. See [contracts/README.md](contracts/README.md).
+
 ## Development
 
 ```bash
