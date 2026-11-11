@@ -1,0 +1,7 @@
+# Onshare policy. The agent may never act outside these limits.
+max_alloc: 25        # % of portfolio per stock
+drawdown: 10          # % from peak, then sell or hold only
+health_factor: 1.5    # minimum loan health factor
+daily_limit: 10       # % of portfolio traded per day
+allowlist: [NVDA, TSLA, AAPL]
+max_feed_age_hours: 72
