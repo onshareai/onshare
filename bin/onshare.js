@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import { ASSETS, EXPLORER, CHAIN_ID, snapshot, rounds, candles, resolve } from '../src/chain.js';
 import { DEFAULT_POLICY, POLICY_FILE, toYaml, loadPolicy, check } from '../src/policy.js';
-import { c, sym, logo, usd, ago, padEnd, padStart, line } from '../src/ui.js';
+import { c, sym, logo, usd, price, ago, padEnd, padStart, line } from '../src/ui.js';
 
 const VERSION = '0.2.0';
 const PORTFOLIO_FILE = 'onshare.portfolio.json';
@@ -301,7 +301,7 @@ async function cmdSwap() {
   const a = L.findAsset(s, pos[2]);
   const t = L.planTrade(s, side, a, amount);
   console.log(`${c.amber('$')} onshare swap ${side} ${a.symbol} ${usd(amount)} ${c.gray(`· account ${account.slice(0, 10)}… · chain ${ctx.chainId}`)}`);
-  console.log(line(sym.ok, 'price', `${usd(Number(a.price) / 10 ** a.feedDecimals)} · chainlink`));
+  console.log(line(sym.ok, 'price', `${price(Number(a.price) / 10 ** a.feedDecimals)} · on-chain feed`));
   console.log(line(sym.arrow, 'trade', `${side === 'buy' ? 'pay' : 'sell'} ${t.amountIn === 0n ? 0 : Number(t.amountIn) / 10 ** t.inDec} ${t.inSym} → ${t.outSym}`));
   const r = await L.executeTrade(ctx, s, adapter, t, { yes: !!flags.yes });
   if (!r.sent || r.failed) process.exitCode = 2;

@@ -1,6 +1,6 @@
 {
   "name": "onshare",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Policy-bound AI agent for tokenized stocks on Robinhood Chain — terminal CLI",
   "type": "module",
   "bin": {
