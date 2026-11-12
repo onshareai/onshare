@@ -5,7 +5,7 @@ import { ASSETS, EXPLORER, CHAIN_ID, snapshot, rounds, candles, resolve } from '
 import { DEFAULT_POLICY, POLICY_FILE, toYaml, loadPolicy, check } from '../src/policy.js';
 import { c, sym, logo, usd, price, ago, padEnd, padStart, line } from '../src/ui.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.2.2';
 const PORTFOLIO_FILE = 'onshare.portfolio.json';
 
 // ---------- arg parsing ----------
