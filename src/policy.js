@@ -6,7 +6,7 @@ export const DEFAULT_POLICY = {
   drawdown: 10,         // % from peak; beyond it the agent may only sell or hold
   health_factor: 1.5,   // minimum loan health factor
   daily_limit: 10,      // % of portfolio that may trade per day
-  allowlist: ['NVDA', 'TSLA', 'AAPL'],
+  allowlist: ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'AMD', 'TSM', 'PLTR', 'COIN', 'MSTR', 'SPY', 'QQQ'],
   max_feed_age_hours: 72,
 };
 

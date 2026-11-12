@@ -26,7 +26,7 @@ const server = http.createServer((req, res) => {
       if (call.method === 'eth_blockNumber') result = '0x1dc9a87';
       else {
         const { to, data } = call.params[0];
-        const base = PRICES[to.toLowerCase()];
+        const base = PRICES[to.toLowerCase()] || 100; // feeds without a fixed test price
         if (data === '0xfeaf968c') result = enc(RID, base, now - 600);
         else {
           const i = Number(RID - BigInt('0x' + data.slice(10)));
@@ -59,6 +59,8 @@ server.listen(0, async () => {
     [['policy', 'show'], 0, 'max_alloc'],
     [['check', 'buy', 'NVDA', '1000', '--hold', '12'], 0, 'approved'],
     [['check', 'buy', 'NVDA', '2000', '--hold', '12'], 2, 'rejected'],
+    [['check', 'buy', 'MSFT', '1000', '--hold', '12'], 0, 'approved'],
+    [['price', 'QQQ'], 0, 'Nasdaq 100 ETF'],
     [['portfolio', 'init'], 0, 'wrote'],
     [['run', '--dry-run', '--once'], 0, 'policy check'],
     [['price', 'XYZ'], 1, 'Unknown asset'],
