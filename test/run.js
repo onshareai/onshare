@@ -6,6 +6,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { price } from '../src/ui.js';
+{
+  const want = [[0.00000461, '$0.0₅461'], [0.004612, '$0.0₂461'], [0.01, '$0.01'], [295.28, '$295.28']];
+  for (const [v, w] of want) {
+    if (price(v) !== w) { console.log(`FAIL  price(${v}) = ${price(v)}, want ${w}`); process.exit(1); }
+  }
+  console.log('PASS  price() formats sub-cent launch-token prices');
+}
+
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PRICES = {
   '0x379ec4f7c378f34a1b47e4f3cbebcbac3e8e9f15': 229.58,

@@ -29,6 +29,16 @@ export function usd(n) {
   return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/// Prices: normal dollars from one cent up; below that, the zero count goes in a subscript
+/// so launch-token prices stay readable, e.g. 0.00000461 -> $0.0₅461.
+export function price(n) {
+  const v = Number(n);
+  if (!(v > 0) || v >= 0.01) return usd(v);
+  const zeros = Math.floor(-Math.log10(v));
+  const sig = String(Math.round(v * 10 ** (zeros + 3))).slice(0, 3);
+  return '$0.0' + String(zeros).split('').map((d) => '₀₁₂₃₄₅₆₇₈₉'[d]).join('') + sig;
+}
+
 export function ago(sec) {
   const d = Math.max(0, Math.floor(Date.now() / 1000 - sec));
   if (d < 60) return d + 's ago';

@@ -7,7 +7,7 @@ import {
   decodeErrorResult, BaseError, ContractFunctionRevertedError, formatUnits,
 } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
-import { c, sym, usd, line } from './ui.js';
+import { c, sym, usd, price, line } from './ui.js';
 import { CHAIN_ID, EXPLORER } from './chain.js';
 
 export const KEY_FILE = 'onshare.agent.key';
@@ -169,7 +169,7 @@ export function printAccount(s, chainId) {
   for (const a of s.assets) {
     const over = a.alloc !== null && a.alloc > BigInt(p.maxAllocBps);
     const age = Math.round((now - Number(a.updatedAt)) / 60);
-    console.log(`  ${c.bold(a.symbol.padEnd(9))} ${Number(formatUnits(a.balance, a.decimals)).toFixed(6).padEnd(20)} ${usd(px(a)).padEnd(12)} ${(over ? c.red : (x) => x)(pct(a.alloc).padEnd(7))} ${c.gray(age < 120 ? age + 'm' : Math.round(age / 60) + 'h')}`);
+    console.log(`  ${c.bold(a.symbol.padEnd(9))} ${Number(formatUnits(a.balance, a.decimals)).toFixed(6).padEnd(20)} ${price(px(a)).padEnd(12)} ${(over ? c.red : (x) => x)(pct(a.alloc).padEnd(7))} ${c.gray(age < 120 ? age + 'm' : Math.round(age / 60) + 'h')}`);
   }
 }
 
