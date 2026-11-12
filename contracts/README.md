@@ -27,6 +27,8 @@ Each swap is measured by real balance changes, not by what the swap venue report
 | `src/OnshareAccount.sol` | The policy-bound smart account |
 | `src/OnshareAccountFactory.sol` | Deploys one account per owner at a predictable CREATE2 address |
 | `src/adapters/UniswapV3Adapter.sol` | Swaps through Uniswap v3 (SwapRouter02) along owner-set routes |
+| `src/adapters/PonsCurveAdapter.sol` | Trades one Pons launch token (e.g. $ONSHARE) on its bonding curve, USDG on the other side |
+| `src/feeds/PonsCurveFeed.sol` | USD price of a Pons launch token (curve price × ETH/USD) in the Chainlink feed shape |
 | `src/interfaces/IExternal.sol` | ERC-20, Chainlink feed and swap adapter interfaces |
 
 ## Build and test
@@ -40,7 +42,7 @@ forge build
 forge test
 ```
 
-The suite has 55 tests plus 5 mainnet fork tests: unit tests for every rule, fuzz tests (1,000 runs each) and invariant tests (128 runs × 64 calls) that drive the account with random trades, price moves and time jumps. Line coverage of `OnshareAccount.sol` is about 97%.
+The suite has 75 tests plus 6 mainnet fork tests: unit tests for every rule, fuzz tests (1,000 runs each) and invariant tests (128 runs × 64 calls) that drive the account with random trades, price moves and time jumps. Line coverage of `OnshareAccount.sol` is about 97%.
 
 Invariants checked:
 
@@ -62,8 +64,47 @@ Robinhood Chain mainnet (chain 4663) addresses used by the adapter and the fork 
 | Uniswap v3 Factory | `0x1f7d7550B1b028f7571E69A784071F0205FD2EfA` | Uniswap `sdk-core` |
 | Uniswap QuoterV2 | `0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7` | Uniswap `sdk-core` |
 | USDG (6 decimals) | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` | Paxos docs |
+| WETH9 | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` | Uniswap `sdk-core` |
+| ETH / USD feed | `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9` | Chainlink |
+| $ONSHARE | `0xe2b14F1A82FD525C66780DaAfCcf0EE88cF52F0F` | Pons |
+| $ONSHARE curve | `0x6bb433C0ffAD10e852410E52FCd52B5d913C095c` | Pons |
 
 Always confirm addresses on the [explorer](https://robinhoodchain.blockscout.com) before deploying.
+
+## Pons curve adapter ($ONSHARE)
+
+`PonsCurveAdapter` lets the agent trade a Pons V2 launch token while it is still on its bonding curve. The account keeps USDG as its quote token, so the adapter bridges through ETH:
+
+- buy: USDG → WETH on Uniswap v3 → unwrap → `curve.buy` → token sent to the account
+- sell: `curve.sell` → ETH → wrap → WETH → USDG on Uniswap v3 → sent to the account
+
+Like the Uniswap adapter it pulls exactly the approved amount, clears every approval and holds nothing between calls. It also refuses:
+
+- any trade once the curve is ready to graduate or has graduated (`CurveClosed`)
+- a buy the curve could only partly fill, instead of leaving refunded ETH behind (`PartialFill`)
+- ETH from anyone except the curve and WETH
+
+`PonsCurveFeed` gives the account a price for the token: the curve's marginal price in ETH times the ETH/USD feed, with 18 decimals. After graduation it reports `updatedAt = 0`, so the account treats the price as stale until the owner points the asset at a new feed.
+
+Things to know before listing a curve token:
+
+- **Slippage.** The curve charges a fee and a creator tax on every trade, on top of the Uniswap pool fee and price impact. The account's oracle bound (`maxSlippageBps`, default 1%) must be above that total or every buy reverts. `DeployPons.s.sol` prints the curve's fee + tax so you can set it.
+- **Spot price.** The feed reads the curve's current reserves, which anyone can move by trading on the curve in the same block. `max_alloc` and `daily_limit` cap how much of a portfolio this can affect. Keep curve-token allocations small.
+- **Graduation.** After graduation the token trades on Uniswap v4. This adapter does not cover that; a v4 route is a separate adapter.
+
+Deploy the adapter and feed, and list the token on an account you own (signs with a keystore account):
+
+```bash
+ACCOUNT=<your OnshareAccount> SLIPPAGE_BPS=<above curve fee+tax> \
+  forge script script/DeployPons.s.sol --rpc-url robinhood --broadcast --account deployer
+```
+
+Fork test against the live $ONSHARE curve:
+
+```bash
+ROBINHOOD_RPC_URL=https://rpc.mainnet.chain.robinhood.com \
+  forge test --match-path test/fork/PonsFork.t.sol -vv
+```
 
 ## Mainnet fork tests
 
